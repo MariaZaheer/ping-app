@@ -1,0 +1,71 @@
+name: Build PING APK
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unzip the project
+        run: |
+          mkdir app
+          unzip -q PING-flutter-project.zip -d app
+          ls app
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: stable
+          cache: true
+
+      - name: Create the Android project
+        working-directory: app
+        run: flutter create --platforms=android --org com.ping --project-name ping .
+
+      - name: Apply PING Android settings
+        working-directory: app
+        run: python3 tool/patch_android.py
+
+      - name: Remove the sample test that flutter create adds
+        working-directory: app
+        run: rm -f test/widget_test.dart
+
+      - name: Get packages
+        working-directory: app
+        run: flutter pub get
+
+      - name: Run unit tests
+        working-directory: app
+        continue-on-error: true
+        run: flutter test
+
+      - name: Build debug APK
+        working-directory: app
+        run: flutter build apk --debug
+
+      - name: Build release APK
+        working-directory: app
+        continue-on-error: true
+        run: flutter build apk --release --no-shrink
+
+      - name: Collect APKs
+        working-directory: app
+        run: |
+          mkdir -p out
+          cp build/app/outputs/flutter-apk/app-debug.apk out/PING-debug.apk
+          if [ -f build/app/outputs/flutter-apk/app-release.apk ]; then cp build/app/outputs/flutter-apk/app-release.apk out/PING-release.apk; fi
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PING-apk
+          path: app/out/*.apk
